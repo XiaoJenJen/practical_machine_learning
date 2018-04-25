@@ -1,0 +1,116 @@
+# Practical machine learning project
+####Jenny Xu
+####04/23/2018
+
+## Synopsis
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants will be used. Participants were asked to perform barbell lifts correctly and incorrectly in 5 different ways.
+
+The possible outcomes were:
+Class A: correct, done according to the specification
+Class B: incorrect: elbows thrown to the front
+Class C: incorrect: dumbbell lifted only halfway
+Class D: incorrect: dumbbell lowered only halfway
+Class E: incorrect: hips thrown to the front
+
+The goal of this project is to predict the manner in which they did the exercise. This report describes the data manipulation and application of machine learning concepts used to perform prediction on a test set.
+
+## Data
+The training data for this project are available here:
+[https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv](https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv)
+
+The test data are available here:
+[https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv](https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv)
+
+Note: The dataset used in this project is a courtesy of “Ugulino, W.; Cardador, D.; Vega, K.; Velloso, E.; Milidiu, R.; Fuks, H. Wearable Computing: Accelerometers’ Data Classification of Body Postures and Movements”
+### Set the global option and libraries
+```{r setup, message=FALSE, warning=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(caret)
+library(rpart)
+library(rattle)
+library(randomForest)
+```
+### Load and Preprocess data
+```{r}
+trainUrl <- "http://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+testUrl <- "http://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+training <- read.csv(url(trainUrl), na.strings=c("NA","#DIV/0!",""))
+testing <- read.csv(url(testUrl), na.strings=c("NA","#DIV/0!",""))
+```
+### Remove NA’s and Additional Columns
+Eliminate Columns with any NAs
+```{r}
+training1 <- training[, colSums(is.na(training)) == 0]
+```
+Check and remove unneeded columns 
+```{r}
+names(training1)
+training1<-training1[,-c(1:7)]
+```
+Remove Co-variate columns
+```{r}
+nzv <- nearZeroVar(training1, saveMetrics=TRUE)
+training1 <- training1[,nzv$nzv==FALSE]
+dim(training1)
+```
+### Data Splitting
+```{r}
+set.seed(12345)
+inTrain <- createDataPartition(training1$classe, p=0.6, list=FALSE)
+myTraining <- training1[inTrain, ]
+myTesting <- training1[-inTrain, ]
+dim(myTraining); dim(myTesting)
+```
+### Cross Validation
+The method chosen for cross-validation was k-fold, using k=5. This offers a good balance between performance, bias, and variance.
+```{r}
+cv_control <- trainControl(method = "cv", number = 5)
+```
+
+## Prediction models
+Three methods will be applied to model the regressions (in the Train dataset) and the best one (with higher accuracy when applied to the Test dataset) will be used for the quiz predictions. 
+
+The methods are: 
+1.Decision Tree
+2.Random Forest, as described below.
+
+A Confusion Matrix is plotted at the end of each analysis to better visualize the accuracy of the models.
+
+### 1.Decision Tree
+Fit the model
+```{r}
+set.seed(888)
+modelfit1 <- train(classe ~ ., data = myTraining, method = "rpart", trControl = cv_control)
+fancyRpartPlot(modelfit1$finalModel,main="Decision Tree for HAR training dataset", sub="")
+```
+
+Perform the prediction on testing dataset
+```{r}
+prediction1<-predict(modelfit1, newdata=myTesting)
+```
+Evaluate prediction and out of sample error
+```{r}
+CM1<-confusionMatrix(myTesting$classe, prediction1)
+accuracy1<-CM1$overall[1]
+accuracy1
+```
+The overall accuracy for this approach was just `r accuracy1`, meaning that the Out of Sample error expected for this approach is `r 1-accuracy1`.
+
+### 2.Random Forest
+The Random Forest method fits a number of decision trees using subsamples of the dataset and then applies an averaging function to control for over-fitting and improve accuracy. Random Forest does cross-validation internally, so there’s no need to specify the specific cross-validation parameters.
+```{r}
+set.seed(999)
+modelfit2 <- randomForest(classe ~ ., data=myTraining)
+prediction2 <- predict(modelfit2, newdata = myTesting)
+CM2<-confusionMatrix(myTesting$classe, prediction2)
+accuracy2<-CM2$overall[1]
+accuracy2
+```
+The accuracy for Random Forest was significantly better at `r accuracy2`, leading to an Out of Sample error of just `r 1-accuracy2`.
+Therefore, we choose to use the Random Forest Model to predict against the test dataset.
+
+## Prediction on the Test Data
+```{r}
+Prediction<-predict(modelfit2, newdata= testing)
+Prediction
+```
